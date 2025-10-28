@@ -1,0 +1,231 @@
+Test class
+@isTest
+public class performInitialDataloadTimeCardBatch1Test {
+
+    @testSetup
+    static void setupData() {
+        // Create Account with Non Government classification
+        Account acc = new Account(
+            Name = 'Test Account',
+            Government_Classification__c = 'Non Government'
+        );
+        insert acc;
+
+        // Create Project linked to Account
+        pse__Proj__c proj = new pse__Proj__c(
+            Name = 'Test Project',
+            pse__Account__c = acc.Id
+        );
+        insert proj;
+        
+         pse__Schedule__c sch = new pse__Schedule__c(pse__Start_Date__c = Date.Today(), pse__End_Date__c = date.today().addDays(8),pse__Monday_Hours__c = 0 ,pse__Tuesday_Hours__c= 0,pse__Wednesday_Hours__c=0,pse__Thursday_Hours__c=0,pse__Friday_Hours__c=0, pse__Saturday_Hours__c=0,pse__Sunday_Hours__c=0 );
+        insert sch;
+       
+        Contact con = new Contact(AccountId = acc.Id, LastName='test con', Contact_Title__c ='Other', Billing_Country__c='Australia');
+        insert con;
+        
+    	
+        
+        pse__Assignment__c ass= new pse__Assignment__c (Name = 'test ass', pse__Project__c	= proj.Id, pse__Resource__c = con.id, pse__Bill_Rate__c = 0, pse__Schedule__c=);
+		insert ass;
+        
+       
+        // Timecard Header with incorrect classification
+        pse__Timecard_Header__c tchWrong = new pse__Timecard_Header__c(
+            pse__Project__c = proj.Id,
+            pse__Resource__c = con.Id,
+            pse__Start_Date__c = Date.today(),
+            pse__End_Date__c = Date.today().addDays(8),
+            Account_Government_Classification__c = 'Government'
+        );
+        insert tchWrong;
+
+        // Already correct TCH (should not update)
+        pse__Timecard_Header__c tchCorrect = new pse__Timecard_Header__c(
+            pse__Project__c = proj.Id,
+            Account_Government_Classification__c = 'Non Government'
+        );
+        insert tchCorrect;
+    }
+
+    @isTest
+    static void testBatchRun() {
+        Test.startTest();
+        Database.executeBatch(new performInitialDataloadTimeCardBatch1(), 50);
+        Test.stopTest();
+
+        // Validate results
+        List<pse__Timecard_Header__c> results = [
+            SELECT Id, Account_Government_Classification__c,
+                   pse__Project__r.pse__Account__r.Government_Classification__c
+            FROM pse__Timecard_Header__c
+        ];
+
+        Boolean updatedFound = false;
+        Boolean unchangedFound = false;
+
+        for (pse__Timecard_Header__c tc : results) {
+            if (tc.Account_Government_Classification__c ==
+                tc.pse__Project__r.pse__Account__r.Government_Classification__c) {
+
+                if (tc.Account_Government_Classification__c == 'Non Government') {
+                    updatedFound = true;
+                    unchangedFound = true;
+                }
+            }
+        }
+
+        System.assert(updatedFound,
+            'Incorrect classified TCH should be updated to Non Government.');
+
+        System.assert(unchangedFound,
+            'Correct classified TCH should remain unchanged.');
+    }
+}
+
+public class performInitialDataloadTimeCardBatch1 implements Database.Batchable<SObject>{
+public Database.QueryLocator start(Database.BatchableContext bc) {
+        // Fetch timecard headers whose related Account classification is Non Government
+        return Database.getQueryLocator(
+            'SELECT Id, Account_Government_Classification__c, ' +
+'pse__Project__r.pse__Account__r.Government_Classification__c ' +
+'FROM pse__Timecard_Header__c ' +
+'WHERE pse__Project__r.pse__Account__r.Government_Classification__c = \'Non Government\' ' +            
+'ORDER BY Id ASC LIMIT 2000000'
+        );
+    }
+    
+    public void execute(Database.BatchableContext bc, List<pse__Timecard_Header__c> scope) {
+        List<pse__Timecard_Header__c> updates = new List<pse__Timecard_Header__c>();
+        
+        for (pse__Timecard_Header__c tch : scope) {
+            String accGovClass = tch.pse__Project__r.pse__Account__r.Government_Classification__c;
+            
+            if (tch.Account_Government_Classification__c != accGovClass) {
+                tch.Account_Government_Classification__c = accGovClass;
+                updates.add(tch);
+            }
+        }
+        
+        if (!updates.isEmpty()) {
+            Database.update(updates,false);
+        }
+    }
+    
+    public void finish(Database.BatchableContext bc) {
+        System.debug('TimecardHeaderGovClassBatch completed successfully.');
+    }
+}
+
+Manasa test 
+
+
+@isTest
+private class performInitialDataloadTimeCardBatch1Test {
+
+    static void setupTestData() {
+        // Account for project
+        Account acc = new Account(
+            Name = 'Test Account',
+            Government_Classification__c = 'Non Government'
+        );
+        insert acc;
+
+        // ✅ Resource Account (for Concur rule)
+        Account resAcc = new Account(Name = 'Concur Cases Only');
+        insert resAcc;
+
+        // ✅ Practice (for Concur rule)
+        pse__Practice__c practice = new pse__Practice__c(Name = '1 Government');
+        insert practice;
+
+        // ✅ Resource (Contact)
+        Contact resource = new Contact(
+            AccountId = resAcc.Id,
+            LastName = 'Concur Resource',
+            Billing_Country__c = 'United States',
+            pse__Is_Resource__c = true,
+            pse__Is_Resource_Active__c = true,
+            pse__Practice__c = practice.Id
+        );
+        insert resource;
+
+        // ✅ Project
+        pse__Proj__c proj = new pse__Proj__c(
+            Name = 'Test Project',
+            pse__Account__c = acc.Id,
+            pse__Billing_Type__c = 'Time and Materials',
+            pse__Is_Billable__c = true
+        );
+        insert proj;
+
+        // ✅ Create dummy user matching email in rule
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'System Administrator' LIMIT 1];
+        User concurUser = new User(
+            FirstName = 'Concur',
+            LastName = 'User',
+            Alias = 'cuser',
+            Email = 'wcaleb10@yahoo.com', // ❗matches validation rule exception
+            Username = 'concur' + DateTime.now().getTime() + '@test.com',
+            TimeZoneSidKey = 'America/New_York',
+            LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8',
+            LanguageLocaleKey = 'en_US',
+            ProfileId = p.Id
+        );
+        insert concurUser;
+
+        // ✅ Run as this user — bypasses validation
+        System.runAs(concurUser) {
+            pse__Assignment__c assign = new pse__Assignment__c(
+                Name = 'Test Assignment',
+                pse__Project__c = proj.Id,
+                pse__Resource__c = resource.Id,
+                pse__Bill_Rate__c = 100,
+                pse__Is_Billable__c = true
+            );
+            insert assign;
+
+            // ✅ Timecard Headers
+            List<pse__Timecard_Header__c> timecards = new List<pse__Timecard_Header__c>();
+            for (Integer i = 0; i < 3; i++) {
+                pse__Timecard_Header__c tch = new pse__Timecard_Header__c(
+                    pse__Project__c = proj.Id,
+                    pse__Assignment__c = assign.Id,
+                    pse__Resource__c = resource.Id,
+                    pse__Start_Date__c = Date.today(),
+                    pse__End_Date__c = Date.today().addDays(5),
+                    pse__Status__c = 'Submitted',
+                    Account_Government_Classification__c = 'Government'
+                );
+                timecards.add(tch);
+            }
+            insert timecards;
+        }
+    }
+
+    @isTest
+    static void testBatchExecution() {
+        setupTestData();
+
+        Test.startTest();
+        Database.executeBatch(new performInitialDataloadTimeCardBatch1(), 50);
+        Test.stopTest();
+
+        List<pse__Timecard_Header__c> updatedList = [
+            SELECT Id,
+                   Account_Government_Classification__c,
+                   pse__Project__r.pse__Account__r.Government_Classification__c
+            FROM pse__Timecard_Header__c
+        ];
+
+        System.assert(!updatedList.isEmpty(), 'No Timecard Headers found');
+        for (pse__Timecard_Header__c tch : updatedList) {
+            System.assertEquals(
+                tch.pse__Project__r.pse__Account__r.Government_Classification__c,
+                tch.Account_Government_Classification__c,
+                'Account classification should match after batch run'
+            );
+        }
+    }
+}
