@@ -1,0 +1,113 @@
+HTML
+
+<template>
+    <lightning-card title="Select Field and Validate">
+        <div class="slds-p-around_medium">
+            <template if:true={objectInfo}>
+                <lightning-combobox
+                    name="fieldSelector"
+                    label="Select Field"
+                    options={fieldOptions}
+                    onchange={handleFieldChange}
+                    placeholder="Choose a field">
+                </lightning-combobox>
+
+                <lightning-button
+                    class="slds-m-top_medium"
+                    label="Save"
+                    variant="brand"
+                    onclick={handleSave}>
+                </lightning-button>
+
+                <template if:true={showSuccess}>
+                    <div class="slds-text-color_success slds-m-top_medium">
+                        {message}
+                    </div>
+                </template>
+
+                <template if:true={showError}>
+                    <div class="slds-text-color_error slds-m-top_medium">
+                        {message}
+                    </div>
+                </template>
+            </template>
+
+            <template if:false={objectInfo}>
+                <lightning-spinner alternative-text="Loading metadata..."></lightning-spinner>
+            </template>
+        </div>
+    </lightning-card>
+</template>
+
+Java Script
+
+import { LightningElement, wire, track } from 'lwc';
+import { getObjectInfo } from 'lightning/uiObjectInfoApi';
+import CONTACT_OBJECT from '@salesforce/schema/Contact'; // You can make this dynamic too
+
+export default class ObjectFieldChecker extends LightningElement {
+
+    @track selectedField;
+    @track message = '';
+    @track messageType = '';
+    @track objectInfo;
+
+    // Load object metadata (for example, Contact)
+    @wire(getObjectInfo, { objectApiName: CONTACT_OBJECT })
+    wiredObjectInfo({ data, error }) {
+        if (data) {
+            this.objectInfo = data;
+        } else if (error) {
+            console.error('Error loading object metadata:', error);
+        }
+    }
+
+    // Handle field selection
+    handleFieldChange(event) {
+        this.selectedField = event.detail.value;
+        this.message = '';
+        this.messageType = '';
+    }
+
+    // Handle save button click
+    handleSave() {
+        if (!this.objectInfo || !this.selectedField) {
+            this.message = 'Please select a field first.';
+            this.messageType = 'error';
+            return;
+        }
+
+        const fieldMetadata = this.objectInfo.fields[this.selectedField];
+        if (!fieldMetadata) {
+            this.message = 'Selected field not found in metadata.';
+            this.messageType = 'error';
+            return;
+        }
+
+        // ✅ Check if the field is required
+        if (fieldMetadata.required) {
+            this.message = `${fieldMetadata.label} is a required field. ✅ Success!`;
+            this.messageType = 'success';
+        } else {
+            this.message = `${fieldMetadata.label} is not a required field. ❌ Error!`;
+            this.messageType = 'error';
+        }
+    }
+
+    // Build picklist of fields dynamically (includes custom fields)
+    get fieldOptions() {
+        if (!this.objectInfo) return [];
+        return Object.values(this.objectInfo.fields).map(field => ({
+            label: field.label,
+            value: field.apiName
+        }));
+    }
+
+    get showSuccess() {
+        return this.messageType === 'success';
+    }
+
+    get showError() {
+        return this.messageType === 'error';
+    }
+}
