@@ -1,0 +1,65 @@
+trigger OpportunityLineItemTrigger on OpportunityLineItem (
+    before insert, before update, after insert, after update
+) {
+    TriggerDispatcher.dispatch(
+        new OpportunityLineItemTriggerHandler(),
+        Trigger.operationType
+    );
+}
+
+/**
+ * @description
+ * Trigger handler for OpportunityLineItem used to process Royalty Type logic.
+ * Delegates business logic to OpportunityLineItemService and supports bulk
+ * operations for After Insert and After Update trigger contexts.
+ */
+public with sharing class OpportunityLineItemTriggerHandler
+    implements Disableable, AfterInsert, AfterUpdate {
+
+    /**
+     * @description
+     * Indicates whether the handler should be disabled.
+     *
+     * @return Boolean always false for this implementation.
+     */
+    public Boolean isDisabled() {
+        return false;
+    }
+
+    /**
+     * @description
+     * Handles after-insert processing for OpportunityLineItem trigger.
+     * Converts the Trigger.newMap values to a strongly-typed list and
+     * delegates processing to OpportunityLineItemService.
+     *
+     * @param newMap
+     *   Map of newly inserted OpportunityLineItem records keyed by Id.
+     */
+    public void afterInsert(Map<Id, SObject> newMap) {
+        List<OpportunityLineItem> oliList = new List<OpportunityLineItem>();
+        for (SObject sobj : newMap.values()) {
+            oliList.add((OpportunityLineItem) sobj);
+        }
+        OpportunityLineItemService.processRoyaltyTypeUpdate(oliList);
+    }
+
+    /**
+     * @description
+     * Handles after-update processing for OpportunityLineItem trigger.
+     * Converts Trigger.newMap values to a strongly-typed list and
+     * delegates processing to OpportunityLineItemService.
+     *
+     * @param newMap
+     *   Map of new OpportunityLineItem values keyed by Id.
+     *
+     * @param oldMap
+     *   Map of old OpportunityLineItem values keyed by Id.
+     */
+    public void afterUpdate(Map<Id, SObject> newMap, Map<Id, SObject> oldMap) {
+        List<OpportunityLineItem> oliList = new List<OpportunityLineItem>();
+        for (SObject sobj : newMap.values()) {
+            oliList.add((OpportunityLineItem) sobj);
+        }
+        OpportunityLineItemService.processRoyaltyTypeUpdate(oliList);
+    }
+}
