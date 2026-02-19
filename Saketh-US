@@ -1,0 +1,159 @@
+<template>
+    <lightning-card title="Google Speech-to-Text" icon-name="utility:audio">
+        <div class="slds-p-around_medium">
+            <!-- Mode Selection -->
+            <div class="slds-m-bottom_medium">
+                <lightning-radio-group
+                    label="Transcription Mode"
+                    options={modeOptions}
+                    value={selectedMode}
+                    type="radio"
+                    onchange={handleModeChange}>
+                </lightning-radio-group>
+            </div>
+            
+            <!-- Upload and Transcribe Mode -->
+            <template if:true={isUploadMode}>
+                <c-upload-transcribe-mode
+                    record-id={recordId}
+                    ontranscriptionupdate={handleTranscriptionUpdate}
+                    onprocessingchange={handleProcessingChange}>
+                </c-upload-transcribe-mode>
+            </template>
+            
+            <!-- Live Transcription Mode -->
+            <template if:true={isLiveMode}>
+                <c-live-transcription-mode
+                    record-id={recordId}
+                    ontranscriptionupdate={handleTranscriptionUpdate}
+                    onprocessingchange={handleProcessingChange}>
+                </c-live-transcription-mode>
+            </template>
+            
+            <!-- Processing Indicator -->
+            <template if:true={isProcessing}>
+                <div class="slds-m-top_medium">
+                    <lightning-spinner 
+                        alternative-text="Processing..." 
+                        size="small">
+                    </lightning-spinner>
+                    <p class="slds-text-body_small slds-text-color_weak slds-m-top_small">
+                        Processing audio transcription...
+                    </p>
+                </div>
+            </template>
+            
+            <!-- Transcription Display -->
+            <template if:true={transcription}>
+                <div class="slds-m-top_medium">
+                    <lightning-card title="Transcription Result" icon-name="utility:text">
+                        <div slot="actions">
+                            <lightning-button-icon
+                                icon-name="utility:copy"
+                                alternative-text="Copy transcription"
+                                title="Copy transcription"
+                                onclick={copyTranscription}
+                                variant="border-filled">
+                            </lightning-button-icon>
+                        </div>
+                        <div class="slds-p-around_small">
+                            <p class="slds-text-longform slds-text-body_regular">{transcription}</p>
+                        </div>
+                    </lightning-card>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>
+
+
+JS
+import { LightningElement, api } from 'lwc';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+
+export default class GoogleSpeechToText extends LightningElement {
+    @api recordId;
+    
+    selectedMode = 'upload'; // 'upload' or 'live'
+    transcription = '';
+    isProcessing = false;
+    
+    modeOptions = [
+        { label: 'Upload & Transcribe', value: 'upload' },
+        { label: 'Live Transcription', value: 'live' }
+    ];
+    
+    get isUploadMode() {
+        return this.selectedMode === 'upload';
+    }
+    
+    get isLiveMode() {
+        return this.selectedMode === 'live';
+    }
+    
+    handleModeChange(event) {
+        this.selectedMode = event.detail.value;
+        this.transcription = ''; // Clear transcription when switching modes
+    }
+    
+    handleTranscriptionUpdate(event) {
+        this.transcription = event.detail.transcription || '';
+    }
+    
+    handleProcessingChange(event) {
+        this.isProcessing = event.detail.isProcessing;
+    }
+    
+    copyTranscription() {
+        if (!this.transcription) {
+            return;
+        }
+        
+        // Copy to clipboard
+        const textArea = document.createElement('textarea');
+        textArea.value = this.transcription;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            this.showToast('Success', 'Transcription copied to clipboard', 'success');
+        } catch (err) {
+            this.showToast('Error', 'Failed to copy transcription', 'error');
+        } finally {
+            document.body.removeChild(textArea);
+        }
+    }
+    
+    showToast(title, message, variant) {
+        const evt = new ShowToastEvent({
+            title: title,
+            message: message,
+            variant: variant
+        });
+        this.dispatchEvent(evt);
+    }
+}
+
+Meta.xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>64.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__RecordPage</target>
+        <target>lightning__AppPage</target>
+        <target>lightning__HomePage</target>
+    </targets>
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordPage">
+            <supportedFormFactors>
+                <supportedFormFactor type="Small" />
+                <supportedFormFactor type="Large" />
+            </supportedFormFactors>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>
